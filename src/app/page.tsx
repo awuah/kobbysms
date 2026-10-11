@@ -105,6 +105,13 @@ export default function Home() {
 
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [templateTitle, setTemplateTitle] = useState("");
+  const [templateCategory, setTemplateCategory] = useState("General");
+  const [templateContent, setTemplateContent] = useState("");
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
 
   // Constituents list tab
   const [constituents, setConstituents] = useState<Constituent[]>([]);
@@ -229,6 +236,80 @@ export default function Home() {
       setTemplates(data.templates || []);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleOpenNewTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateTitle("");
+    setTemplateCategory("General");
+    setTemplateContent("");
+    setShowTemplateModal(true);
+  };
+
+  const handleOpenEditTemplate = (tpl: Template) => {
+    setEditingTemplate(tpl);
+    setTemplateTitle(tpl.title);
+    setTemplateCategory(tpl.category || "General");
+    setTemplateContent(tpl.content);
+    setShowTemplateModal(true);
+  };
+
+  const handleSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!templateTitle.trim() || !templateContent.trim()) {
+      alert("Please enter template title and message content.");
+      return;
+    }
+
+    try {
+      setIsSavingTemplate(true);
+      const isEdit = !!editingTemplate;
+      const method = isEdit ? "PUT" : "POST";
+      const payload = isEdit
+        ? { id: editingTemplate.id, title: templateTitle, category: templateCategory, content: templateContent }
+        : { title: templateTitle, category: templateCategory, content: templateContent };
+
+      const res = await fetch("/api/templates", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save template");
+
+      setShowTemplateModal(false);
+      setEditingTemplate(null);
+      setTemplateTitle("");
+      setTemplateContent("");
+      fetchTemplates();
+      alert(isEdit ? "Template updated successfully!" : "Template created successfully!");
+    } catch (err: any) {
+      alert(err.message || "Failed to save template");
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string, title: string) => {
+    if (!window.confirm(`Are you sure you want to delete the template "${title}"?`)) {
+      return;
+    }
+
+    try {
+      setDeletingTemplateId(id);
+      const res = await fetch(`/api/templates?id=${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete template");
+
+      fetchTemplates();
+    } catch (err: any) {
+      alert(err.message || "Failed to delete template");
+    } finally {
+      setDeletingTemplateId(null);
     }
   };
 
@@ -1389,47 +1470,90 @@ export default function Home() {
         {/* TAB 3: TEMPLATES */}
         {activeTab === "templates" && (
           <div className="space-y-6">
-            <div>
-              <h3 className="text-lg font-bold text-stone-900">Constituency Message Templates</h3>
-              <p className="text-xs text-stone-500">
-                Standard templates for townhalls, infrastructure announcements, festivals, and youth development.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-stone-900">Constituency Message Templates</h3>
+                <p className="text-xs text-stone-500">
+                  Pre-configured messages for townhalls, infrastructure announcements, festivals, and alerts.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenNewTemplate}
+                className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-semibold text-sm flex items-center gap-2 transition self-start sm:self-auto shadow-xs"
+              >
+                <Plus className="w-4 h-4 text-amber-400" />
+                Create Template
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {templates.map((tpl) => (
-                <div
-                  key={tpl.id}
-                  className="bg-white border border-[#eae2d0] rounded-3xl p-5 shadow-sm space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-stone-900">{tpl.title}</span>
-                    <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-[#f4ede0] text-stone-700 border border-[#e4d7c3]">
-                      {tpl.category}
-                    </span>
-                  </div>
-                  <p className="text-xs text-stone-600 leading-relaxed bg-[#fbf9f5] p-3 rounded-2xl border border-[#efe7d8]">
-                    {tpl.content}
-                  </p>
-                  <div className="flex items-center justify-between pt-2">
-                    <span className="text-[11px] text-stone-400">
-                      {tpl.content.length} characters • {Math.ceil(tpl.content.length / 160)} page(s)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMessage(tpl.content);
-                        setCampaignTitle(tpl.title);
-                        setActiveTab("broadcast");
-                      }}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white transition flex items-center gap-1.5"
-                    >
-                      <Send className="w-3.5 h-3.5 text-amber-400" />
-                      Use in Broadcast
-                    </button>
-                  </div>
+              {templates.length === 0 ? (
+                <div className="col-span-2 p-8 text-center bg-white border border-[#eae2d0] rounded-3xl text-stone-400 text-sm">
+                  No message templates found. Click "Create Template" to add one.
                 </div>
-              ))}
+              ) : (
+                templates.map((tpl) => (
+                  <div
+                    key={tpl.id}
+                    className="bg-white border border-[#eae2d0] rounded-3xl p-5 shadow-sm space-y-3 flex flex-col justify-between group hover:border-[#dbcbb5] transition"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="font-bold text-sm text-stone-900 truncate">{tpl.title}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-[#f4ede0] text-stone-700 border border-[#e4d7c3]">
+                            {tpl.category}
+                          </span>
+                          {/* Edit Template */}
+                          <button
+                            onClick={() => handleOpenEditTemplate(tpl)}
+                            title="Edit template"
+                            className="p-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 transition"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          {/* Delete Template */}
+                          <button
+                            onClick={() => handleDeleteTemplate(tpl.id, tpl.title)}
+                            disabled={deletingTemplateId === tpl.id}
+                            title="Delete template"
+                            className="p-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition disabled:opacity-50"
+                          >
+                            {deletingTemplateId === tpl.id ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-stone-600 leading-relaxed bg-[#fbf9f5] p-3 rounded-2xl border border-[#efe7d8]">
+                        {tpl.content}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-[#f4ede0]">
+                      <span className="text-[11px] text-stone-400">
+                        {tpl.content.length} characters • {Math.ceil(tpl.content.length / 160)} page(s)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMessage(tpl.content);
+                          setCampaignTitle(tpl.title);
+                          setActiveTab("broadcast");
+                        }}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white transition flex items-center gap-1.5"
+                      >
+                        <Send className="w-3.5 h-3.5 text-amber-400" />
+                        Use in Broadcast
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -1831,6 +1955,102 @@ export default function Home() {
                       <Upload className="w-4 h-4 text-amber-400" />
                       Run Import
                     </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Modal: Create / Edit Message Template */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#eae2d0] rounded-3xl max-w-lg w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#f1eae0]">
+              <div>
+                <h3 className="font-bold text-lg text-stone-900">
+                  {editingTemplate ? "Update Message Template" : "Create New Template"}
+                </h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Save reusable message drafts for quick constituent broadcasts.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveTemplate} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
+                  Template Title / Subject
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={templateTitle}
+                  onChange={(e) => setTemplateTitle(e.target.value)}
+                  placeholder="e.g. Townhall Invitation or Flood Alert"
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
+                  Category
+                </label>
+                <select
+                  value={templateCategory}
+                  onChange={(e) => setTemplateCategory(e.target.value)}
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-800"
+                >
+                  <option value="General">General</option>
+                  <option value="Townhall">Townhall / Meeting</option>
+                  <option value="Development">Development / Projects</option>
+                  <option value="Announcement">Announcement</option>
+                  <option value="Festival">Festival / Holiday</option>
+                  <option value="Emergency">Emergency Alert</option>
+                </select>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-stone-700 uppercase">
+                    SMS Message Content
+                  </label>
+                  <span className="text-[11px] text-stone-400">
+                    {templateContent.length} chars ({Math.ceil(templateContent.length / 160) || 1} page)
+                  </span>
+                </div>
+                <textarea
+                  rows={5}
+                  required
+                  value={templateContent}
+                  onChange={(e) => setTemplateContent(e.target.value)}
+                  placeholder="Enter message text... (tip: use {name} for constituent's name)"
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-2xl p-3 text-xs text-stone-900 focus:outline-none focus:border-stone-800 leading-relaxed"
+                />
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#f1eae0]">
+                <button
+                  type="button"
+                  onClick={() => setShowTemplateModal(false)}
+                  className="px-4 py-2 rounded-xl bg-[#f4ede0] text-stone-700 text-sm hover:bg-[#ece2d1]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingTemplate}
+                  className="px-5 py-2 rounded-xl bg-stone-900 text-white font-bold text-sm hover:bg-stone-800 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSavingTemplate ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                      Saving...
+                    </>
+                  ) : editingTemplate ? (
+                    "Update Template"
+                  ) : (
+                    "Save Template"
                   )}
                 </button>
               </div>
