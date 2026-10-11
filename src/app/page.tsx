@@ -786,29 +786,9 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Live Gateway Balance Card */}
-            <div className="bg-[#fbf9f4] border border-[#e5dccb] rounded-xl px-4 py-2 flex items-center gap-3 shadow-xs">
-              <div className="p-2 bg-emerald-50 rounded-lg text-emerald-800 border border-emerald-200">
-                <Radio className="w-4 h-4 animate-pulse" />
-              </div>
-              <div>
-                <p className="text-[10px] text-stone-500 uppercase tracking-wider font-semibold">
-                  SMS Gateway Balance
-                </p>
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-bold text-stone-900">
-                    {loadingStats ? "..." : (stats?.balance ?? 0).toLocaleString()}
-                  </span>
-                  <span className="text-[11px] text-stone-500">Credits</span>
-                  <button
-                    onClick={fetchStats}
-                    title="Refresh Balance"
-                    className="text-stone-400 hover:text-stone-700 transition-colors ml-1"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
+            <div className="hidden sm:flex items-center gap-2 bg-[#fbf9f4] border border-[#e5dccb] rounded-xl px-3.5 py-2 text-xs font-semibold text-stone-700 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+              <span>Sender ID: <strong>KOBBYMP</strong></span>
             </div>
 
             <button
@@ -1206,7 +1186,6 @@ export default function Home() {
                     <span className="text-xs font-semibold text-stone-700">
                       Send Quick Test Message
                     </span>
-                    <span className="text-[10px] text-stone-400">1 credit</span>
                   </div>
 
                   <div className="space-y-2">
