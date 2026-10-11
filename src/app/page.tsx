@@ -17,6 +17,7 @@ import {
   MapPin,
   Smartphone,
   Plus,
+  Upload,
   Trash2,
   Edit2,
   Pencil,
@@ -119,6 +120,13 @@ export default function Home() {
   const [newLastName, setNewLastName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newArea, setNewArea] = useState("Amanful West");
+
+  // Bulk Import State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importAreaDefault, setImportAreaDefault] = useState("Amanful West");
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
 
   // Edit Constituent Modal State
   const [editingConstituent, setEditingConstituent] = useState<Constituent | null>(null);
@@ -393,6 +401,91 @@ export default function Home() {
     } catch (err: any) {
       alert(err.message || "Failed to save constituent");
     }
+  };
+
+  const handleBulkImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setImportResult(null);
+
+    // Parse pasted lines: e.g. "Kofi, Mensah, 0244123456, Beach Road" or "0244123456"
+    const lines = importText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (lines.length === 0) {
+      alert("Please enter constituent data or upload a CSV file to import.");
+      return;
+    }
+
+    const records = lines.map((line) => {
+      const parts = line.split(/[,\t]+/).map((p) => p.trim());
+      if (parts.length === 1) {
+        // Just phone number
+        return {
+          first_name: "Constituent",
+          last_name: "",
+          phone_number: parts[0],
+          electoral_area: importAreaDefault,
+        };
+      } else if (parts.length === 2) {
+        // Name, Phone
+        const nameParts = parts[0].split(" ");
+        return {
+          first_name: nameParts[0] || "Constituent",
+          last_name: nameParts.slice(1).join(" ") || "",
+          phone_number: parts[1],
+          electoral_area: importAreaDefault,
+        };
+      } else {
+        // First Name, Last Name, Phone, Locality
+        return {
+          first_name: parts[0],
+          last_name: parts[1],
+          phone_number: parts[2],
+          electoral_area: parts[3] || importAreaDefault,
+        };
+      }
+    });
+
+    try {
+      setIsImporting(true);
+      const res = await fetch("/api/constituents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(records),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Bulk import failed");
+
+      setImportResult({
+        success: true,
+        count: data.importedCount || records.length,
+      });
+
+      fetchConstituents();
+      fetchStats();
+      confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+    } catch (err: any) {
+      setImportResult({ success: false, error: err.message });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        setImportText(content);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleOpenEdit = (c: Constituent) => {
@@ -1154,8 +1247,16 @@ export default function Home() {
               <div className="flex items-center gap-3 w-full md:w-auto justify-end">
                 <button
                   type="button"
+                  onClick={() => setShowImportModal(true)}
+                  className="px-4 py-2 rounded-xl bg-[#f4ede0] hover:bg-[#eae0cf] text-stone-800 font-semibold text-sm flex items-center gap-2 transition border border-[#e4d6c0]"
+                >
+                  <Upload className="w-4 h-4 text-stone-600" />
+                  Import / Bulk Add
+                </button>
+                <button
+                  type="button"
                   onClick={() => setShowAddModal(true)}
-                  className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-semibold text-sm flex items-center gap-2 transition"
+                  className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-semibold text-sm flex items-center gap-2 transition shadow-xs"
                 >
                   <Plus className="w-4 h-4 text-amber-400" />
                   Register Constituent
@@ -1608,6 +1709,128 @@ export default function Home() {
                     </>
                   ) : (
                     "Update Constituent"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Modal: Bulk Import Constituents */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#eae2d0] rounded-3xl max-w-lg w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#f1eae0]">
+              <div>
+                <h3 className="font-bold text-lg text-stone-900 flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-stone-700" />
+                  Import Constituents
+                </h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Paste contact rows or upload a CSV / TXT list.
+                </p>
+              </div>
+            </div>
+
+            {importResult && (
+              <div
+                className={`p-3.5 rounded-xl text-xs border ${
+                  importResult.success
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                    : "bg-rose-50 border-rose-200 text-rose-800"
+                }`}
+              >
+                {importResult.success ? (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Successfully imported/updated {importResult.count} constituents!</span>
+                  </div>
+                ) : (
+                  <div>
+                    <span className="font-semibold">Import error:</span> {importResult.error}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <form onSubmit={handleBulkImport} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
+                  Default Locality / Electoral Area
+                </label>
+                <select
+                  value={importAreaDefault}
+                  onChange={(e) => setImportAreaDefault(e.target.value)}
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-800"
+                >
+                  {(stats?.localities || []).map((loc) => (
+                    <option key={loc.name} value={loc.name}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-stone-400 mt-1 block">
+                  Assigned if a constituent row does not specify their locality.
+                </span>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-stone-700 uppercase">
+                    Constituent Data (Paste or Upload)
+                  </label>
+                  <label className="text-xs text-amber-800 hover:underline cursor-pointer font-semibold flex items-center gap-1">
+                    <Upload className="w-3 h-3" />
+                    Choose File (.csv, .txt)
+                    <input
+                      type="file"
+                      accept=".csv,.txt"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                <textarea
+                  rows={6}
+                  required
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  placeholder={`Supported formats per row:\n1. 024XXXXXXX\n2. Kwame Mensah, 024XXXXXXX\n3. Kwame, Mensah, 024XXXXXXX, Amanful West`}
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-2xl p-3 text-xs text-stone-900 font-mono focus:outline-none focus:border-stone-800 leading-relaxed"
+                />
+                <div className="flex items-center justify-between text-[11px] text-stone-400 mt-1">
+                  <span>Duplicates with existing phone numbers will automatically update.</span>
+                  <span>{importText.split("\n").filter((l) => l.trim()).length} line(s)</span>
+                </div>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#f1eae0]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportResult(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#f4ede0] text-stone-700 text-sm hover:bg-[#ece2d1]"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={isImporting || !importText.trim()}
+                  className="px-5 py-2 rounded-xl bg-stone-900 text-white font-bold text-sm hover:bg-stone-800 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isImporting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 text-amber-400" />
+                      Run Import
+                    </>
                   )}
                 </button>
               </div>
