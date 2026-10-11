@@ -15,14 +15,15 @@ import {
   Filter,
   Phone,
   MapPin,
-  Sparkles,
   Smartphone,
-  ChevronRight,
-  Upload,
   Plus,
   Trash2,
   Copy,
-  Info,
+  Lock,
+  LogOut,
+  User,
+  ShieldCheck,
+  ChevronRight,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -63,6 +64,14 @@ interface Campaign {
 }
 
 export default function Home() {
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // App Tabs & States
   const [activeTab, setActiveTab] = useState<"broadcast" | "constituents" | "templates" | "history">("broadcast");
   const [stats, setStats] = useState<{
     balance: number;
@@ -86,7 +95,7 @@ export default function Home() {
   const [sendSuccess, setSendSuccess] = useState<any>(null);
   const [sendError, setSendError] = useState("");
 
-  // Test SMS modal/popover
+  // Test SMS State
   const [testPhone, setTestPhone] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
@@ -133,6 +142,53 @@ export default function Home() {
           .split(/[\n,;]+/)
           .map((s) => s.trim())
           .filter((s) => s.length >= 9).length;
+
+  // Verify Auth Status
+  const checkAuth = async () => {
+    try {
+      const res = await fetch("/api/auth");
+      const data = await res.json();
+      setIsAuthenticated(data.authenticated === true);
+    } catch {
+      setIsAuthenticated(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: loginUsername,
+          password: loginPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Login failed");
+      }
+      setIsAuthenticated(true);
+      fetchStats();
+      fetchTemplates();
+    } catch (err: any) {
+      setLoginError(err.message || "Failed to log in");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth", { method: "DELETE" });
+      setIsAuthenticated(false);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -193,17 +249,25 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchStats();
-    fetchTemplates();
+    checkAuth();
   }, []);
 
   useEffect(() => {
-    if (activeTab === "constituents") {
-      fetchConstituents();
-    } else if (activeTab === "history") {
-      fetchHistory();
+    if (isAuthenticated) {
+      fetchStats();
+      fetchTemplates();
     }
-  }, [activeTab, page, selectedLocalityFilter, searchQuery]);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (activeTab === "constituents") {
+        fetchConstituents();
+      } else if (activeTab === "history") {
+        fetchHistory();
+      }
+    }
+  }, [activeTab, page, selectedLocalityFilter, searchQuery, isAuthenticated]);
 
   // Handle Send Bulk Message
   const handleSendBroadcast = async (e: React.FormEvent) => {
@@ -212,7 +276,7 @@ export default function Home() {
     setSendSuccess(null);
 
     if (!message.trim()) {
-      setSendError("Please enter a message text to broadcast.");
+      setSendError("Please enter message text to broadcast.");
       return;
     }
 
@@ -251,8 +315,8 @@ export default function Home() {
 
       setSendSuccess(data);
       confetti({
-        particleCount: 100,
-        spread: 70,
+        particleCount: 90,
+        spread: 60,
         origin: { y: 0.6 },
       });
       fetchStats();
@@ -314,7 +378,7 @@ export default function Home() {
       setNewPhone("");
       fetchConstituents();
       fetchStats();
-      alert("Constituent registered successfully!");
+      alert("Constituent saved successfully!");
     } catch (err: any) {
       alert(err.message || "Failed to save constituent");
     }
@@ -338,13 +402,121 @@ export default function Home() {
     setSelectedLocalities([]);
   };
 
+  // Initial loading state
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen bg-[#fbf9f5] flex items-center justify-center text-stone-600">
+        <RefreshCw className="w-6 h-6 animate-spin text-amber-600 mr-2" />
+        <span className="font-medium text-sm">Verifying security credentials...</span>
+      </div>
+    );
+  }
+
+  // LOGIN SCREEN: Elegant White, Off-white & Cream Palette
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#fbf9f5] flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md bg-white border border-[#eae3d2] shadow-xl shadow-[#eae3d2]/40 rounded-3xl p-8 sm:p-10">
+          <div className="flex flex-col items-center text-center">
+            <div className="relative w-20 h-20 rounded-full overflow-hidden border-4 border-[#efe7d3] shadow-md mb-4 bg-[#f8f5ee]">
+              <Image
+                src="/mp-portrait.jpeg"
+                alt="Hon. Kwabena Okyere Darko-Mensah"
+                fill
+                className="object-cover"
+              />
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f4ece1] border border-[#e5d8c3] text-stone-700 text-xs font-semibold uppercase tracking-wider mb-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+              Takoradi MP Portal
+            </div>
+            <h1 className="text-2xl font-bold text-stone-900 tracking-tight">
+              Administrative Access
+            </h1>
+            <p className="text-xs text-stone-500 mt-1 max-w-xs">
+              Constituency Messaging Platform for Hon. Kwabena Okyere Darko-Mensah
+            </p>
+          </div>
+
+          {loginError && (
+            <div className="mt-6 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-center gap-2.5 text-xs">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="mt-6 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
+                Admin Username
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 absolute left-3.5 top-3.5 text-stone-400" />
+                <input
+                  type="text"
+                  required
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="Enter administrator username"
+                  className="w-full bg-[#faf7f2] border border-[#e8dfcf] focus:border-amber-700 focus:bg-white rounded-xl pl-10 pr-4 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
+                Admin Password
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-stone-400" />
+                <input
+                  type="password"
+                  required
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Enter secure password"
+                  className="w-full bg-[#faf7f2] border border-[#e8dfcf] focus:border-amber-700 focus:bg-white rounded-xl pl-10 pr-4 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full mt-2 py-3 px-4 bg-stone-900 hover:bg-stone-800 text-[#faf7f2] font-semibold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isLoggingIn ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                  Verifying...
+                </>
+              ) : (
+                <>
+                  <span>Sign In to SMS Gateway</span>
+                  <ChevronRight className="w-4 h-4 text-amber-400" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-5 border-t border-[#f0e9dc] text-center">
+            <span className="text-[11px] text-stone-400 font-medium">
+              Official Sender ID: <strong className="text-stone-700">KOBBYMP</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // MAIN PORTAL: Warm Off-White, Cream, and Soft Sand Theme
   return (
-    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100">
-      {/* Top Civic Navigation Bar */}
-      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-40">
+    <div className="flex flex-col min-h-screen bg-[#fbf9f5] text-stone-800">
+      {/* Header Bar */}
+      <header className="border-b border-[#eae3d2] bg-white/90 backdrop-blur sticky top-0 z-40 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-amber-500 shadow-md shadow-amber-500/20">
+            <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-[#d9ccb6] shadow-sm bg-[#faf6ee]">
               <Image
                 src="/mp-portrait.jpeg"
                 alt="Hon. Kwabena Okyere Darko-Mensah"
@@ -354,38 +526,38 @@ export default function Home() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-lg text-white tracking-tight">
+                <span className="font-bold text-lg text-stone-900 tracking-tight">
                   KOBBYMP
                 </span>
-                <span className="bg-amber-500/20 text-amber-400 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-amber-500/30">
+                <span className="bg-[#f2ebe0] text-stone-700 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-[#e3d7c3]">
                   Takoradi Constituency
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                Hon. Kwabena Okyere Darko-Mensah • Constituent Broadcast System
+              <p className="text-xs text-stone-500">
+                Hon. Kwabena Okyere Darko-Mensah • Constituent Bulk SMS Tool
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Live Gateway Balance Card */}
-            <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl px-4 py-2 flex items-center gap-3">
-              <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400 border border-emerald-500/20">
+            <div className="bg-[#fbf9f4] border border-[#e5dccb] rounded-xl px-4 py-2 flex items-center gap-3 shadow-xs">
+              <div className="p-2 bg-emerald-50 rounded-lg text-emerald-800 border border-emerald-200">
                 <Radio className="w-4 h-4 animate-pulse" />
               </div>
               <div>
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                <p className="text-[10px] text-stone-500 uppercase tracking-wider font-semibold">
                   SMS Gateway Balance
                 </p>
                 <div className="flex items-center gap-2">
-                  <span className="text-base font-bold text-emerald-400">
+                  <span className="text-base font-bold text-stone-900">
                     {loadingStats ? "..." : (stats?.balance ?? 0).toLocaleString()}
                   </span>
-                  <span className="text-[11px] text-slate-400">Credits</span>
+                  <span className="text-[11px] text-stone-500">Credits</span>
                   <button
                     onClick={fetchStats}
                     title="Refresh Balance"
-                    className="text-slate-500 hover:text-slate-300 transition-colors ml-1"
+                    className="text-stone-400 hover:text-stone-700 transition-colors ml-1"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
@@ -393,108 +565,111 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="hidden md:flex items-center gap-2 bg-slate-800/50 border border-slate-700/50 rounded-xl px-3 py-2 text-xs text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>Sender ID: <strong>KOBBYMP</strong></span>
-            </div>
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              className="p-2.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-xl transition border border-stone-200"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        {/* Tab Bar */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 border-t border-slate-800/60 overflow-x-auto">
+        {/* Tab Navigation */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 border-t border-[#eee7d8] overflow-x-auto">
           <button
             onClick={() => setActiveTab("broadcast")}
-            className={`py-3 px-4 font-medium text-sm flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            className={`py-3 px-4 font-semibold text-xs tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
               activeTab === "broadcast"
-                ? "border-amber-500 text-amber-400 bg-amber-500/5"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                ? "border-stone-900 text-stone-900 bg-[#f7f2e7]"
+                : "border-transparent text-stone-500 hover:text-stone-800 hover:bg-[#fbf9f4]"
             }`}
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-3.5 h-3.5" />
             Send Broadcast
           </button>
           <button
             onClick={() => setActiveTab("constituents")}
-            className={`py-3 px-4 font-medium text-sm flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            className={`py-3 px-4 font-semibold text-xs tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
               activeTab === "constituents"
-                ? "border-amber-500 text-amber-400 bg-amber-500/5"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                ? "border-stone-900 text-stone-900 bg-[#f7f2e7]"
+                : "border-transparent text-stone-500 hover:text-stone-800 hover:bg-[#fbf9f4]"
             }`}
           >
-            <Users className="w-4 h-4" />
+            <Users className="w-3.5 h-3.5" />
             Constituents & Localities ({stats?.totalConstituents || 0})
           </button>
           <button
             onClick={() => setActiveTab("templates")}
-            className={`py-3 px-4 font-medium text-sm flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            className={`py-3 px-4 font-semibold text-xs tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
               activeTab === "templates"
-                ? "border-amber-500 text-amber-400 bg-amber-500/5"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                ? "border-stone-900 text-stone-900 bg-[#f7f2e7]"
+                : "border-transparent text-stone-500 hover:text-stone-800 hover:bg-[#fbf9f4]"
             }`}
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-3.5 h-3.5" />
             Message Templates
           </button>
           <button
             onClick={() => setActiveTab("history")}
-            className={`py-3 px-4 font-medium text-sm flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            className={`py-3 px-4 font-semibold text-xs tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
               activeTab === "history"
-                ? "border-amber-500 text-amber-400 bg-amber-500/5"
-                : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                ? "border-stone-900 text-stone-900 bg-[#f7f2e7]"
+                : "border-transparent text-stone-500 hover:text-stone-800 hover:bg-[#fbf9f4]"
             }`}
           >
-            <History className="w-4 h-4" />
+            <History className="w-3.5 h-3.5" />
             Delivery Logs & History
           </button>
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Content Body */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* TAB 1: BROADCAST MESSAGING */}
         {activeTab === "broadcast" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Left 8 Cols: Composer Form */}
             <div className="lg:col-span-8 space-y-6">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                <div className="flex items-center justify-between pb-5 border-b border-slate-800">
+              <div className="bg-white border border-[#eae2d0] rounded-3xl p-6 sm:p-7 shadow-sm">
+                <div className="flex items-center justify-between pb-5 border-b border-[#f1eae0]">
                   <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                      <Send className="w-5 h-5 text-amber-500" />
+                    <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                      <Send className="w-5 h-5 text-amber-700" />
                       Compose Constituency Message
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Deliver urgent announcements, townhall invitations, and community updates straight to constituents.
+                    <p className="text-xs text-stone-500 mt-1">
+                      Deliver official announcements, townhall invitations, and community alerts straight to constituents.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-                    <span className="text-xs text-slate-400">Sender ID:</span>
-                    <span className="text-xs font-mono font-bold text-amber-400">
+                  <div className="flex items-center gap-2 bg-[#f8f4ec] px-3 py-1.5 rounded-xl border border-[#e5dac5]">
+                    <span className="text-xs text-stone-500">Sender ID:</span>
+                    <span className="text-xs font-mono font-bold text-stone-900">
                       {senderId}
                     </span>
                   </div>
                 </div>
 
                 {sendSuccess && (
-                  <div className="mt-5 p-4 bg-emerald-950/60 border border-emerald-500/40 rounded-xl flex items-start gap-3 text-emerald-200">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="mt-5 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3 text-emerald-900">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                     <div className="text-sm">
-                      <p className="font-semibold text-emerald-300">
+                      <p className="font-semibold text-emerald-900">
                         Broadcast Completed Successfully!
                       </p>
-                      <p className="text-xs mt-1">
-                        Delivered to {sendSuccess.successful} recipient(s) out of {sendSuccess.total} targeted.
+                      <p className="text-xs mt-1 text-emerald-700">
+                        Dispatched to {sendSuccess.successful} recipient(s) out of {sendSuccess.total} targeted.
                       </p>
                     </div>
                   </div>
                 )}
 
                 {sendError && (
-                  <div className="mt-5 p-4 bg-rose-950/60 border border-rose-500/40 rounded-xl flex items-start gap-3 text-rose-200">
-                    <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                  <div className="mt-5 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-900">
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                     <div className="text-sm">
-                      <p className="font-semibold text-rose-300">Failed to Broadcast</p>
-                      <p className="text-xs mt-1">{sendError}</p>
+                      <p className="font-semibold text-rose-900">Broadcast Error</p>
+                      <p className="text-xs mt-1 text-rose-700">{sendError}</p>
                     </div>
                   </div>
                 )}
@@ -502,56 +677,56 @@ export default function Home() {
                 <form onSubmit={handleSendBroadcast} className="mt-6 space-y-6">
                   {/* Campaign Title / Reference */}
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                    <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-2">
                       Campaign Subject / Internal Reference
                     </label>
                     <input
                       type="text"
                       value={campaignTitle}
                       onChange={(e) => setCampaignTitle(e.target.value)}
-                      placeholder="e.g. Takoradi Road Modernization Update or Kundu Festival Greetings"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                      placeholder="e.g. Takoradi Road Rehabilitation Update or Kundu Festival Greetings"
+                      className="w-full bg-[#fcfbf8] border border-[#e8dfcf] rounded-xl px-4 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-stone-800 transition"
                     />
                   </div>
 
                   {/* Audience Targeting Modes */}
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                      Target Constituency Audience Segment
+                    <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-2">
+                      Target Audience Segment
                     </label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <button
                         type="button"
                         onClick={() => setTargetType("all")}
-                        className={`p-4 rounded-xl border text-left transition-all ${
+                        className={`p-4 rounded-2xl border text-left transition-all ${
                           targetType === "all"
-                            ? "bg-amber-500/10 border-amber-500 text-white shadow-lg shadow-amber-500/5"
-                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700"
+                            ? "bg-[#f5ede0] border-[#d8c7ad] shadow-xs"
+                            : "bg-[#fcfbf9] border-[#e8dfcf] text-stone-600 hover:border-[#d9cbba]"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">All Constituents</span>
-                          <Users className="w-4 h-4 text-amber-400" />
+                          <span className="font-semibold text-sm text-stone-900">All Constituents</span>
+                          <Users className="w-4 h-4 text-stone-700" />
                         </div>
-                        <p className="text-xs text-slate-400">
-                          Reach everyone registered across all 17 Takoradi localities ({stats?.totalConstituents || 0}).
+                        <p className="text-xs text-stone-500">
+                          Reach all registered constituents across 17 Takoradi localities ({stats?.totalConstituents || 0}).
                         </p>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setTargetType("localities")}
-                        className={`p-4 rounded-xl border text-left transition-all ${
+                        className={`p-4 rounded-2xl border text-left transition-all ${
                           targetType === "localities"
-                            ? "bg-amber-500/10 border-amber-500 text-white shadow-lg shadow-amber-500/5"
-                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700"
+                            ? "bg-[#f5ede0] border-[#d8c7ad] shadow-xs"
+                            : "bg-[#fcfbf9] border-[#e8dfcf] text-stone-600 hover:border-[#d9cbba]"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">By Localities / Areas</span>
-                          <MapPin className="w-4 h-4 text-amber-400" />
+                          <span className="font-semibold text-sm text-stone-900">By Localities</span>
+                          <MapPin className="w-4 h-4 text-stone-700" />
                         </div>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-stone-500">
                           Select specific electoral areas like Amanful, Zenith, Beach Road, etc.
                         </p>
                       </button>
@@ -559,43 +734,43 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => setTargetType("custom")}
-                        className={`p-4 rounded-xl border text-left transition-all ${
+                        className={`p-4 rounded-2xl border text-left transition-all ${
                           targetType === "custom"
-                            ? "bg-amber-500/10 border-amber-500 text-white shadow-lg shadow-amber-500/5"
-                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700"
+                            ? "bg-[#f5ede0] border-[#d8c7ad] shadow-xs"
+                            : "bg-[#fcfbf9] border-[#e8dfcf] text-stone-600 hover:border-[#d9cbba]"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">Direct / Custom Numbers</span>
-                          <Smartphone className="w-4 h-4 text-amber-400" />
+                          <span className="font-semibold text-sm text-stone-900">Custom Numbers</span>
+                          <Smartphone className="w-4 h-4 text-stone-700" />
                         </div>
-                        <p className="text-xs text-slate-400">
-                          Paste or enter specific phone numbers (committee members, elders, etc.).
+                        <p className="text-xs text-stone-500">
+                          Paste or enter specific numbers (committee members, elders, etc.).
                         </p>
                       </button>
                     </div>
                   </div>
 
-                  {/* Locality Multi-select Pills (if targetType === 'localities') */}
+                  {/* Locality Multi-select Pills */}
                   {targetType === "localities" && (
-                    <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-3">
+                    <div className="p-4 bg-[#f8f5ee] border border-[#e8ded0] rounded-2xl space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-slate-300">
+                        <span className="text-xs font-semibold text-stone-700">
                           Select Takoradi Electoral Areas ({selectedLocalities.length} selected)
                         </span>
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={selectAllLocalities}
-                            className="text-[11px] text-amber-400 hover:underline"
+                            className="text-[11px] font-semibold text-amber-800 hover:underline"
                           >
                             Select All
                           </button>
-                          <span className="text-slate-600">|</span>
+                          <span className="text-stone-300">|</span>
                           <button
                             type="button"
                             onClick={clearLocalities}
-                            className="text-[11px] text-slate-400 hover:underline"
+                            className="text-[11px] text-stone-500 hover:underline"
                           >
                             Clear
                           </button>
@@ -610,14 +785,18 @@ export default function Home() {
                               key={loc.name}
                               type="button"
                               onClick={() => toggleLocality(loc.name)}
-                              className={`text-xs px-3 py-1.5 rounded-lg border font-medium flex items-center gap-2 transition-all ${
+                              className={`text-xs px-3 py-1.5 rounded-xl border font-medium flex items-center gap-2 transition-all ${
                                 isSelected
-                                  ? "bg-amber-500/20 border-amber-500/80 text-amber-300"
-                                  : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
+                                  ? "bg-stone-900 text-white border-stone-900"
+                                  : "bg-white border-[#e5d9c7] text-stone-700 hover:border-[#cbba9f]"
                               }`}
                             >
                               <span>{loc.name}</span>
-                              <span className="bg-slate-800/80 text-[10px] px-1.5 py-0.5 rounded-full text-slate-300 font-mono">
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                                  isSelected ? "bg-stone-700 text-stone-200" : "bg-[#f2ebe0] text-stone-600"
+                                }`}
+                              >
                                 {loc.count}
                               </span>
                             </button>
@@ -630,7 +809,7 @@ export default function Home() {
                   {/* Custom Numbers Textarea */}
                   {targetType === "custom" && (
                     <div className="space-y-2">
-                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider">
                         Recipient Numbers (Comma or Newline separated)
                       </label>
                       <textarea
@@ -638,7 +817,7 @@ export default function Home() {
                         value={customNumbers}
                         onChange={(e) => setCustomNumbers(e.target.value)}
                         placeholder="024XXXXXXX, 055XXXXXXX, 020XXXXXXX"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
+                        className="w-full bg-[#fcfbf8] border border-[#e8dfcf] rounded-xl px-4 py-2.5 text-sm text-stone-900 font-mono focus:outline-none focus:border-stone-800"
                       />
                     </div>
                   )}
@@ -646,24 +825,22 @@ export default function Home() {
                   {/* Message Composer & Character Stats */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider">
                         SMS Content
                       </label>
-                      <div className="flex items-center gap-3 text-xs text-slate-400">
+                      <div className="flex items-center gap-3 text-xs text-stone-500">
                         <span>
-                          Characters: <strong className="text-white">{charCount}</strong>
+                          Characters: <strong className="text-stone-900">{charCount}</strong>
                         </span>
                         <span>•</span>
                         <span>
                           Pages:{" "}
-                          <strong className={pageCount > 1 ? "text-amber-400 font-bold" : "text-emerald-400"}>
+                          <strong className={pageCount > 1 ? "text-amber-800 font-bold" : "text-emerald-700 font-bold"}>
                             {pageCount}
                           </strong>
                         </span>
                         <span>•</span>
-                        <span className="text-slate-500">
-                          {remainingInPage} chars left in page
-                        </span>
+                        <span>{remainingInPage} left in page</span>
                       </div>
                     </div>
 
@@ -672,23 +849,23 @@ export default function Home() {
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Type your message here. You can use {name} for personalizing each constituent's name..."
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors leading-relaxed"
+                      className="w-full bg-[#fcfbf8] border border-[#e8dfcf] rounded-2xl p-4 text-sm text-stone-900 focus:outline-none focus:border-stone-800 transition leading-relaxed"
                     />
 
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <div className="flex items-center justify-between text-[11px] text-stone-500 pt-1">
                       <p>
                         Tip: Place <code>{"{name}"}</code> to auto-personalize greetings (e.g. &quot;Dear {"{name}"}...&quot;)
                       </p>
-                      <span className="text-amber-500/80">Sender ID KOBBYMP is pre-configured</span>
+                      <span className="font-semibold text-stone-700">Official Sender ID: KOBBYMP</span>
                     </div>
                   </div>
 
                   {/* Quick Template Picker */}
                   <div>
-                    <span className="text-xs font-semibold text-slate-400 block mb-2">
-                      Quick Load Template:
+                    <span className="text-xs font-semibold text-stone-600 block mb-2">
+                      Load Message Template:
                     </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {templates.slice(0, 4).map((tpl) => (
                         <button
                           key={tpl.id}
@@ -697,12 +874,12 @@ export default function Home() {
                             setMessage(tpl.content);
                             setCampaignTitle(tpl.title);
                           }}
-                          className="p-2.5 text-left bg-slate-950 border border-slate-800 rounded-lg hover:border-slate-700 transition text-xs group"
+                          className="p-3 text-left bg-[#fcfbf9] border border-[#e8dfcf] rounded-xl hover:border-stone-400 hover:bg-[#f6efe4] transition text-xs group"
                         >
-                          <div className="font-semibold text-slate-300 group-hover:text-amber-400">
+                          <div className="font-semibold text-stone-800 group-hover:text-stone-900">
                             {tpl.title}
                           </div>
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                          <p className="text-[11px] text-stone-500 truncate mt-0.5">
                             {tpl.content}
                           </p>
                         </button>
@@ -710,36 +887,32 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Submission Action & Audience Summary */}
-                  <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="text-sm">
-                        <span className="text-slate-400">Total Audience: </span>
-                        <strong className="text-amber-400 text-base font-bold">
-                          {estimatedAudience.toLocaleString()} Constituents
-                        </strong>
-                      </div>
+                  {/* Submission Action */}
+                  <div className="pt-4 border-t border-[#f1eae0] flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="text-sm">
+                      <span className="text-stone-500">Audience: </span>
+                      <strong className="text-stone-900 text-base font-bold">
+                        {estimatedAudience.toLocaleString()} Constituents
+                      </strong>
                     </div>
 
-                    <div className="flex items-center gap-3 w-full sm:w-auto">
-                      <button
-                        type="submit"
-                        disabled={isSending || estimatedAudience === 0}
-                        className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isSending ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                            Dispatching Messages...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="w-4 h-4" />
-                            Broadcast via KOBBYMP
-                          </>
-                        )}
-                      </button>
-                    </div>
+                    <button
+                      type="submit"
+                      disabled={isSending || estimatedAudience === 0}
+                      className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-sm shadow-md flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSending ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                          Sending via KOBBYMP...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 text-amber-400" />
+                          Broadcast via KOBBYMP
+                        </>
+                      )}
+                    </button>
                   </div>
                 </form>
               </div>
@@ -748,46 +921,46 @@ export default function Home() {
             {/* Right 4 Cols: Phone Preview & Test Send */}
             <div className="lg:col-span-4 space-y-6">
               {/* Smartphone Preview Mockup */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
-                  <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
-                    <Smartphone className="w-4 h-4 text-amber-500" />
+              <div className="bg-white border border-[#eae2d0] rounded-3xl p-6 shadow-sm">
+                <div className="flex items-center justify-between pb-4 border-b border-[#f1eae0] mb-4">
+                  <h3 className="font-bold text-sm text-stone-800 flex items-center gap-2">
+                    <Smartphone className="w-4 h-4 text-stone-600" />
                     Recipient SMS Preview
                   </h3>
-                  <span className="text-[10px] uppercase font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-400">
+                  <span className="text-[10px] uppercase font-mono bg-[#f4ede0] px-2 py-0.5 rounded text-stone-700 font-semibold">
                     KOBBYMP
                   </span>
                 </div>
 
-                {/* iPhone style bubble */}
-                <div className="mx-auto w-full max-w-[280px] bg-slate-950 rounded-2xl border-2 border-slate-800 p-4 shadow-2xl relative">
-                  <div className="w-16 h-3 bg-slate-800 rounded-full mx-auto mb-3"></div>
-                  <div className="text-center pb-2 border-b border-slate-800/80 mb-3">
-                    <p className="text-[11px] font-bold text-amber-400 font-mono">
+                {/* iPhone style bubble with off-white and cream tones */}
+                <div className="mx-auto w-full max-w-[280px] bg-[#fbf9f5] rounded-3xl border border-[#e2d6c3] p-4 shadow-sm relative">
+                  <div className="w-14 h-2.5 bg-[#e5dbc9] rounded-full mx-auto mb-3"></div>
+                  <div className="text-center pb-2 border-b border-[#ece3d3] mb-3">
+                    <p className="text-[11px] font-bold text-stone-900 font-mono">
                       KOBBYMP
                     </p>
-                    <p className="text-[9px] text-slate-500">Takoradi Constituency MP</p>
+                    <p className="text-[9px] text-stone-500">Takoradi Constituency MP</p>
                   </div>
 
                   <div className="min-h-[140px] flex flex-col justify-end">
-                    <div className="bg-slate-800/90 text-slate-100 rounded-2xl rounded-tl-none p-3 text-xs leading-relaxed border border-slate-700/60 shadow-md">
+                    <div className="bg-[#efe7d6] text-stone-800 rounded-2xl rounded-tl-none p-3.5 text-xs leading-relaxed border border-[#e2d5bf] shadow-xs">
                       {message || (
-                        <span className="text-slate-500 italic">
+                        <span className="text-stone-400 italic">
                           Message text will appear here as it will display on constituent phones...
                         </span>
                       )}
                     </div>
-                    <div className="text-[9px] text-slate-500 text-right mt-1">Just now</div>
+                    <div className="text-[9px] text-stone-400 text-right mt-1.5">Just now</div>
                   </div>
                 </div>
 
                 {/* Test SMS Box */}
-                <div className="mt-6 pt-5 border-t border-slate-800 space-y-3">
+                <div className="mt-6 pt-5 border-t border-[#f1eae0] space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-300">
+                    <span className="text-xs font-semibold text-stone-700">
                       Send Quick Test Message
                     </span>
-                    <span className="text-[10px] text-slate-500">1 credit</span>
+                    <span className="text-[10px] text-stone-400">1 credit</span>
                   </div>
 
                   <div className="space-y-2">
@@ -796,14 +969,14 @@ export default function Home() {
                       value={testPhone}
                       onChange={(e) => setTestPhone(e.target.value)}
                       placeholder="Enter mobile (e.g. 0244123456)"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                      className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-stone-800"
                     />
 
                     <button
                       type="button"
                       onClick={handleSendTest}
                       disabled={isSendingTest || !message.trim()}
-                      className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-2 border border-slate-700 disabled:opacity-50"
+                      className="w-full py-2.5 bg-[#f5ede0] hover:bg-[#ece2d1] text-stone-800 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 border border-[#dfd2be] disabled:opacity-50"
                     >
                       {isSendingTest ? (
                         <>
@@ -812,7 +985,7 @@ export default function Home() {
                         </>
                       ) : (
                         <>
-                          <Send className="w-3.5 h-3.5 text-amber-400" />
+                          <Send className="w-3.5 h-3.5 text-stone-700" />
                           Send Test to My Phone
                         </>
                       )}
@@ -821,15 +994,15 @@ export default function Home() {
 
                   {testResult && (
                     <div
-                      className={`p-3 rounded-lg text-xs border ${
+                      className={`p-3 rounded-xl text-xs border ${
                         testResult.success
-                          ? "bg-emerald-950/50 border-emerald-500/30 text-emerald-300"
-                          : "bg-rose-950/50 border-rose-500/30 text-rose-300"
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                          : "bg-rose-50 border-rose-200 text-rose-800"
                       }`}
                     >
                       {testResult.success ? (
                         <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                           <span>Delivered successfully via KOBBYMP!</span>
                         </div>
                       ) : (
@@ -844,9 +1017,9 @@ export default function Home() {
               </div>
 
               {/* Takoradi MP Profile Card */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+              <div className="bg-white border border-[#eae2d0] rounded-3xl p-5 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-slate-700">
+                  <div className="relative w-12 h-12 rounded-2xl overflow-hidden border border-[#d9ccb6]">
                     <Image
                       src="/mp-portrait.jpeg"
                       alt="MP Takoradi"
@@ -855,13 +1028,13 @@ export default function Home() {
                     />
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-white">
+                    <h4 className="font-bold text-sm text-stone-900">
                       Hon. Kwabena Okyere Darko-Mensah
                     </h4>
-                    <p className="text-xs text-amber-400">Member of Parliament, Takoradi</p>
+                    <p className="text-xs text-amber-800 font-medium">Member of Parliament, Takoradi</p>
                   </div>
                 </div>
-                <p className="text-xs text-slate-400 mt-3 leading-relaxed">
+                <p className="text-xs text-stone-500 mt-3 leading-relaxed">
                   Direct SMS channel ensuring consistent, transparent, and direct communication with all residents and constituents across Sekondi-Takoradi Metropolis.
                 </p>
               </div>
@@ -873,10 +1046,10 @@ export default function Home() {
         {activeTab === "constituents" && (
           <div className="space-y-6">
             {/* Top filter & action bar */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="bg-white border border-[#eae2d0] rounded-3xl p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-3 w-full md:w-auto">
                 <div className="relative w-full md:w-80">
-                  <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
+                  <Search className="w-4 h-4 absolute left-3.5 top-3 text-stone-400" />
                   <input
                     type="text"
                     value={searchQuery}
@@ -885,7 +1058,7 @@ export default function Home() {
                       setPage(1);
                     }}
                     placeholder="Search by name or phone..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl pl-9 pr-4 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-800"
                   />
                 </div>
 
@@ -895,7 +1068,7 @@ export default function Home() {
                     setSelectedLocalityFilter(e.target.value);
                     setPage(1);
                   }}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-amber-500"
+                  className="bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-sm text-stone-700 focus:outline-none focus:border-stone-800"
                 >
                   <option value="all">All Localities ({stats?.totalConstituents || 0})</option>
                   {(stats?.localities || []).map((loc) => (
@@ -910,75 +1083,75 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(true)}
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm flex items-center gap-2 transition"
+                  className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-semibold text-sm flex items-center gap-2 transition"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 text-amber-400" />
                   Register Constituent
                 </button>
               </div>
             </div>
 
             {/* Constituents Table */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                <h3 className="font-bold text-sm text-slate-200">
+            <div className="bg-white border border-[#eae2d0] rounded-3xl shadow-sm overflow-hidden">
+              <div className="p-4 sm:p-5 border-b border-[#f1eae0] flex items-center justify-between">
+                <h3 className="font-bold text-sm text-stone-900">
                   Constituent Directory ({totalConstituentsCount.toLocaleString()} total)
                 </h3>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-stone-500">
                   Page {page} of {Math.ceil(totalConstituentsCount / 50) || 1}
                 </span>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 text-xs uppercase border-b border-slate-800">
+                <table className="w-full text-left text-sm text-stone-700">
+                  <thead className="bg-[#f9f6f0] text-stone-500 text-xs uppercase border-b border-[#ece3d3]">
                     <tr>
-                      <th className="px-6 py-3 font-semibold">Name</th>
-                      <th className="px-6 py-3 font-semibold">Phone Number</th>
-                      <th className="px-6 py-3 font-semibold">Takoradi Locality</th>
-                      <th className="px-6 py-3 font-semibold">Gender</th>
-                      <th className="px-6 py-3 font-semibold text-right">Quick SMS</th>
+                      <th className="px-6 py-3.5 font-semibold">Name</th>
+                      <th className="px-6 py-3.5 font-semibold">Phone Number</th>
+                      <th className="px-6 py-3.5 font-semibold">Takoradi Locality</th>
+                      <th className="px-6 py-3.5 font-semibold">Gender</th>
+                      <th className="px-6 py-3.5 font-semibold text-right">Quick SMS</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-[#f2ebd9]">
                     {isLoadingConstituents ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
-                          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-500" />
-                          Loading constituents database...
+                        <td colSpan={5} className="px-6 py-8 text-center text-stone-500">
+                          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-stone-600" />
+                          Loading directory...
                         </td>
                       </tr>
                     ) : constituents.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
-                          No constituents found matching query.
+                        <td colSpan={5} className="px-6 py-8 text-center text-stone-500">
+                          No constituents found.
                         </td>
                       </tr>
                     ) : (
                       constituents.map((c) => (
-                        <tr key={c.id} className="hover:bg-slate-800/40 transition">
-                          <td className="px-6 py-3 font-medium text-white">
+                        <tr key={c.id} className="hover:bg-[#faf7f2] transition">
+                          <td className="px-6 py-3.5 font-medium text-stone-900">
                             {c.first_name} {c.last_name}
                           </td>
-                          <td className="px-6 py-3 font-mono text-amber-400/90 text-xs">
+                          <td className="px-6 py-3.5 font-mono text-stone-600 text-xs">
                             {c.phone_number}
                           </td>
-                          <td className="px-6 py-3">
-                            <span className="bg-slate-800 border border-slate-700/60 px-2.5 py-1 rounded-md text-xs text-slate-300">
+                          <td className="px-6 py-3.5">
+                            <span className="bg-[#f4eee2] border border-[#e4d7c3] px-2.5 py-1 rounded-lg text-xs text-stone-700">
                               {c.electoral_area}
                             </span>
                           </td>
-                          <td className="px-6 py-3 text-xs text-slate-400">
+                          <td className="px-6 py-3.5 text-xs text-stone-500">
                             {c.gender || "—"}
                           </td>
-                          <td className="px-6 py-3 text-right">
+                          <td className="px-6 py-3.5 text-right">
                             <button
                               onClick={() => {
                                 setTargetType("custom");
                                 setCustomNumbers(c.phone_number);
                                 setActiveTab("broadcast");
                               }}
-                              className="text-xs text-amber-400 hover:text-amber-300 hover:underline font-semibold"
+                              className="text-xs text-stone-900 hover:text-amber-800 hover:underline font-semibold"
                             >
                               Compose SMS
                             </button>
@@ -991,11 +1164,11 @@ export default function Home() {
               </div>
 
               {/* Pagination */}
-              <div className="p-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+              <div className="p-4 border-t border-[#f1eae0] flex items-center justify-between text-xs text-stone-500">
                 <button
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#f4ede0] hover:bg-[#ece2d1] text-stone-700 disabled:opacity-40"
                 >
                   Previous
                 </button>
@@ -1003,7 +1176,7 @@ export default function Home() {
                 <button
                   disabled={page * 50 >= totalConstituentsCount}
                   onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#f4ede0] hover:bg-[#ece2d1] text-stone-700 disabled:opacity-40"
                 >
                   Next
                 </button>
@@ -1015,32 +1188,30 @@ export default function Home() {
         {/* TAB 3: TEMPLATES */}
         {activeTab === "templates" && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-white">Constituency Message Templates</h3>
-                <p className="text-xs text-slate-400">
-                  Pre-approved templates for Townhall meetings, announcements, festivals, and project updates.
-                </p>
-              </div>
+            <div>
+              <h3 className="text-lg font-bold text-stone-900">Constituency Message Templates</h3>
+              <p className="text-xs text-stone-500">
+                Standard templates for townhalls, infrastructure announcements, festivals, and youth development.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {templates.map((tpl) => (
                 <div
                   key={tpl.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition space-y-3"
+                  className="bg-white border border-[#eae2d0] rounded-3xl p-5 shadow-sm space-y-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-white">{tpl.title}</span>
-                    <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    <span className="font-bold text-sm text-stone-900">{tpl.title}</span>
+                    <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-[#f4ede0] text-stone-700 border border-[#e4d7c3]">
                       {tpl.category}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+                  <p className="text-xs text-stone-600 leading-relaxed bg-[#fbf9f5] p-3 rounded-2xl border border-[#efe7d8]">
                     {tpl.content}
                   </p>
                   <div className="flex items-center justify-between pt-2">
-                    <span className="text-[11px] text-slate-500">
+                    <span className="text-[11px] text-stone-400">
                       {tpl.content.length} characters • {Math.ceil(tpl.content.length / 160)} page(s)
                     </span>
                     <button
@@ -1050,9 +1221,9 @@ export default function Home() {
                         setCampaignTitle(tpl.title);
                         setActiveTab("broadcast");
                       }}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition flex items-center gap-1.5"
+                      className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white transition flex items-center gap-1.5"
                     >
-                      <Send className="w-3.5 h-3.5" />
+                      <Send className="w-3.5 h-3.5 text-amber-400" />
                       Use in Broadcast
                     </button>
                   </div>
@@ -1066,64 +1237,64 @@ export default function Home() {
         {activeTab === "history" && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-bold text-white">Broadcast Campaigns History</h3>
-              <p className="text-xs text-slate-400">
-                Audit trail of messages broadcasted via Sender ID KOBBYMP with delivery rates.
+              <h3 className="text-lg font-bold text-stone-900">Broadcast Campaigns History</h3>
+              <p className="text-xs text-stone-500">
+                Audit trail of messages broadcasted via Sender ID KOBBYMP.
               </p>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+            <div className="bg-white border border-[#eae2d0] rounded-3xl shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 text-xs uppercase border-b border-slate-800">
+                <table className="w-full text-left text-sm text-stone-700">
+                  <thead className="bg-[#f9f6f0] text-stone-500 text-xs uppercase border-b border-[#ece3d3]">
                     <tr>
-                      <th className="px-6 py-3 font-semibold">Subject / Campaign</th>
-                      <th className="px-6 py-3 font-semibold">Audience Type</th>
-                      <th className="px-6 py-3 font-semibold">Total Targeted</th>
-                      <th className="px-6 py-3 font-semibold">Delivered</th>
-                      <th className="px-6 py-3 font-semibold">Status</th>
-                      <th className="px-6 py-3 font-semibold">Date Sent</th>
+                      <th className="px-6 py-3.5 font-semibold">Subject / Campaign</th>
+                      <th className="px-6 py-3.5 font-semibold">Audience Type</th>
+                      <th className="px-6 py-3.5 font-semibold">Targeted</th>
+                      <th className="px-6 py-3.5 font-semibold">Delivered</th>
+                      <th className="px-6 py-3.5 font-semibold">Status</th>
+                      <th className="px-6 py-3.5 font-semibold">Date</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-[#f2ebd9]">
                     {campaigns.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                        <td colSpan={6} className="px-6 py-8 text-center text-stone-500">
                           No broadcast campaigns dispatched yet.
                         </td>
                       </tr>
                     ) : (
                       campaigns.map((camp) => (
-                        <tr key={camp.id} className="hover:bg-slate-800/40 transition">
-                          <td className="px-6 py-3 font-medium text-white">
+                        <tr key={camp.id} className="hover:bg-[#faf7f2] transition">
+                          <td className="px-6 py-3.5 font-medium text-stone-900">
                             <div>{camp.title}</div>
-                            <div className="text-[11px] text-slate-500 truncate max-w-xs">
+                            <div className="text-[11px] text-stone-500 truncate max-w-xs">
                               {camp.message}
                             </div>
                           </td>
-                          <td className="px-6 py-3">
-                            <span className="capitalize text-xs bg-slate-800 px-2.5 py-1 rounded">
+                          <td className="px-6 py-3.5">
+                            <span className="capitalize text-xs bg-[#f4ede0] px-2.5 py-1 rounded-lg">
                               {camp.target_type}
                             </span>
                           </td>
-                          <td className="px-6 py-3 font-mono text-xs">
+                          <td className="px-6 py-3.5 font-mono text-xs">
                             {camp.total_recipients}
                           </td>
-                          <td className="px-6 py-3 font-mono text-xs text-emerald-400 font-bold">
+                          <td className="px-6 py-3.5 font-mono text-xs text-emerald-700 font-bold">
                             {camp.successful_count}
                           </td>
-                          <td className="px-6 py-3">
+                          <td className="px-6 py-3.5">
                             <span
-                              className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                              className={`text-xs px-2 py-0.5 rounded-md font-semibold ${
                                 camp.status === "completed"
-                                  ? "bg-emerald-500/20 text-emerald-300"
-                                  : "bg-amber-500/20 text-amber-300"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-amber-100 text-amber-800"
                               }`}
                             >
                               {camp.status}
                             </span>
                           </td>
-                          <td className="px-6 py-3 text-xs text-slate-400">
+                          <td className="px-6 py-3.5 text-xs text-stone-500">
                             {new Date(camp.created_at).toLocaleString()}
                           </td>
                         </tr>
@@ -1134,32 +1305,32 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Individual SMS Logs sample */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-              <h4 className="font-bold text-sm text-slate-200">
+            {/* Individual Recent Logs */}
+            <div className="bg-white border border-[#eae2d0] rounded-3xl p-5 shadow-sm space-y-4">
+              <h4 className="font-bold text-sm text-stone-800">
                 Recent Gateway SMS Logs (Last 50 Dispatches)
               </h4>
               <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
                 {recentLogs.map((log) => (
                   <div
                     key={log.id}
-                    className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs"
+                    className="p-3 bg-[#fbf9f5] rounded-2xl border border-[#efe7d8] flex items-center justify-between text-xs"
                   >
                     <div>
-                      <span className="font-semibold text-white mr-2">{log.recipient_name || "Constituent"}</span>
-                      <span className="font-mono text-amber-400/90">{log.phone_number}</span>
-                      <span className="text-slate-500 mx-2">•</span>
-                      <span className="text-slate-400">{log.electoral_area || "Takoradi"}</span>
+                      <span className="font-semibold text-stone-900 mr-2">{log.recipient_name || "Constituent"}</span>
+                      <span className="font-mono text-stone-600">{log.phone_number}</span>
+                      <span className="text-stone-300 mx-2">•</span>
+                      <span className="text-stone-500">{log.electoral_area || "Takoradi"}</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <span
                         className={`font-semibold ${
-                          log.status === "sent" ? "text-emerald-400" : "text-rose-400"
+                          log.status === "sent" ? "text-emerald-700" : "text-rose-700"
                         }`}
                       >
                         {log.status}
                       </span>
-                      <span className="text-slate-500 text-[11px]">
+                      <span className="text-stone-400 text-[11px]">
                         {new Date(log.created_at).toLocaleTimeString()}
                       </span>
                     </div>
@@ -1173,12 +1344,12 @@ export default function Home() {
 
       {/* Modal: Register Constituent */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <h3 className="font-bold text-lg text-white">Add Takoradi Constituent</h3>
+        <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#eae2d0] rounded-3xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <h3 className="font-bold text-lg text-stone-900">Add Takoradi Constituent</h3>
             <form onSubmit={handleAddConstituent} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
                   First Name
                 </label>
                 <input
@@ -1186,12 +1357,12 @@ export default function Home() {
                   required
                   value={newFirstName}
                   onChange={(e) => setNewFirstName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-800"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
                   Surname / Last Name
                 </label>
                 <input
@@ -1199,12 +1370,12 @@ export default function Home() {
                   required
                   value={newLastName}
                   onChange={(e) => setNewLastName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-800"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
                   Phone Number
                 </label>
                 <input
@@ -1213,18 +1384,18 @@ export default function Home() {
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
                   placeholder="024XXXXXXX"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-800"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">
+                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
                   Takoradi Locality / Electoral Area
                 </label>
                 <select
                   value={newArea}
                   onChange={(e) => setNewArea(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-[#fbf9f5] border border-[#e8dfcf] rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-800"
                 >
                   {(stats?.localities || []).map((loc) => (
                     <option key={loc.name} value={loc.name}>
@@ -1234,17 +1405,17 @@ export default function Home() {
                 </select>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-800">
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#f1eae0]">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-sm hover:bg-slate-700"
+                  className="px-4 py-2 rounded-xl bg-[#f4ede0] text-stone-700 text-sm hover:bg-[#ece2d1]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm hover:bg-amber-400"
+                  className="px-5 py-2 rounded-xl bg-stone-900 text-white font-bold text-sm hover:bg-stone-800"
                 >
                   Save Constituent
                 </button>
