@@ -128,6 +128,47 @@ export async function POST(request: Request) {
   }
 }
 
+// PUT /api/constituents - Update existing constituent by ID
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, first_name, last_name, phone_number, electoral_area, gender, occupation, notes } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "Missing constituent ID" }, { status: 400 });
+    }
+
+    const cleanedPhone = sanitizePhoneNumber(phone_number);
+    if (!cleanedPhone || cleanedPhone.length < 9) {
+      return NextResponse.json({ error: "Invalid phone number" }, { status: 400 });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("ks_constituents")
+      .update({
+        first_name: first_name || "Constituent",
+        last_name: last_name || "",
+        phone_number: cleanedPhone,
+        electoral_area: electoral_area || "Other",
+        gender,
+        occupation,
+        notes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, constituent: data });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
 // DELETE /api/constituents?id=xxx
 export async function DELETE(request: Request) {
   try {
