@@ -24,22 +24,17 @@ export async function GET() {
       .from("ks_sms_logs")
       .select("*", { count: "exact", head: true });
 
-    // 5. Fetch locality distribution
+    // 5. Fetch locality distribution via RPC function
     const { data: localityData, error: lErr } = await supabaseAdmin
-      .from("ks_constituents")
-      .select("electoral_area");
+      .rpc("get_ks_locality_counts");
 
-    const localitiesMap: Record<string, number> = {};
-    if (localityData) {
-      localityData.forEach((item) => {
-        const area = item.electoral_area || "Other";
-        localitiesMap[area] = (localitiesMap[area] || 0) + 1;
-      });
+    let localities: Array<{ name: string; count: number }> = [];
+    if (localityData && Array.isArray(localityData)) {
+      localities = localityData.map((item: any) => ({
+        name: item.name,
+        count: Number(item.count),
+      }));
     }
-
-    const localities = Object.entries(localitiesMap)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
 
     return NextResponse.json({
       balance: balanceResult.success ? balanceResult.balance : 0,
