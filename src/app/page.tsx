@@ -147,6 +147,7 @@ export default function Home() {
   // Campaigns & Logs tab
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
+  const [isSyncingHistory, setIsSyncingHistory] = useState(false);
 
   // Character calculation
   const charCount = message.length;
@@ -345,6 +346,25 @@ export default function Home() {
       setRecentLogs(data.recentLogs || []);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const syncHistory = async () => {
+    try {
+      setIsSyncingHistory(true);
+      const res = await fetch("/api/campaigns/sync", { method: "POST" });
+      const data = await res.json();
+      if (data.campaigns) {
+        setCampaigns(data.campaigns);
+      }
+      if (data.recentLogs) {
+        setRecentLogs(data.recentLogs);
+      }
+      fetchStats();
+    } catch (e) {
+      console.error("Sync history error:", e);
+    } finally {
+      setIsSyncingHistory(false);
     }
   };
 
@@ -1540,11 +1560,21 @@ export default function Home() {
         {/* TAB 4: DELIVERY LOGS & CAMPAIGN HISTORY */}
         {activeTab === "history" && (
           <div className="space-y-6">
-            <div>
-              <h3 className="text-lg font-bold text-stone-900">Broadcast Campaigns History</h3>
-              <p className="text-xs text-stone-500">
-                Audit trail of messages broadcasted via Sender ID KOBBYMP.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-stone-900">Broadcast Campaigns History</h3>
+                <p className="text-xs text-stone-500">
+                  Audit trail and real-time delivery status of broadcasts dispatched via Sender ID KOBBYMP.
+                </p>
+              </div>
+              <button
+                onClick={syncHistory}
+                disabled={isSyncingHistory}
+                className="self-start sm:self-auto px-4 py-2 bg-[#f4ede0] hover:bg-[#ede3d1] text-stone-800 border border-[#dfd5c2] rounded-xl text-xs font-semibold flex items-center gap-2 transition disabled:opacity-50 shadow-sm"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingHistory ? "animate-spin text-stone-900" : "text-stone-600"}`} />
+                {isSyncingHistory ? "Syncing Gateway..." : "Sync Delivery Status"}
+              </button>
             </div>
 
             <div className="bg-white border border-[#eae2d0] rounded-3xl shadow-sm overflow-hidden">
@@ -1588,15 +1618,22 @@ export default function Home() {
                             {camp.successful_count}
                           </td>
                           <td className="px-6 py-3.5">
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded-md font-semibold ${
-                                camp.status === "completed"
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-amber-100 text-amber-800"
-                              }`}
-                            >
-                              {camp.status}
-                            </span>
+                            {camp.status === "completed" ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                                Completed
+                              </span>
+                            ) : camp.status === "sending" ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse"></span>
+                                Sending...
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold bg-rose-50 text-rose-800 border border-rose-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>
+                                {camp.status}
+                              </span>
+                            )}
                           </td>
                           <td className="px-6 py-3.5 text-xs text-stone-500">
                             {new Date(camp.created_at).toLocaleString()}
@@ -1611,35 +1648,44 @@ export default function Home() {
 
             {/* Individual Recent Logs */}
             <div className="bg-white border border-[#eae2d0] rounded-3xl p-5 shadow-sm space-y-4">
-              <h4 className="font-bold text-sm text-stone-800">
-                Recent Gateway SMS Logs (Last 50 Dispatches)
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-sm text-stone-800">
+                  Recent Gateway SMS Logs (Last 50 Dispatches)
+                </h4>
+                <span className="text-[11px] text-stone-500 font-medium">Real-time handset delivery</span>
+              </div>
               <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-                {recentLogs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="p-3 bg-[#fbf9f5] rounded-2xl border border-[#efe7d8] flex items-center justify-between text-xs"
-                  >
-                    <div>
-                      <span className="font-semibold text-stone-900 mr-2">{log.recipient_name || "Constituent"}</span>
-                      <span className="font-mono text-stone-600">{log.phone_number}</span>
-                      <span className="text-stone-300 mx-2">•</span>
-                      <span className="text-stone-500">{log.electoral_area || "Takoradi"}</span>
+                {recentLogs.length === 0 ? (
+                  <div className="p-4 text-center text-stone-400 text-xs">No delivery logs recorded yet.</div>
+                ) : (
+                  recentLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="p-3 bg-[#fbf9f5] rounded-2xl border border-[#efe7d8] flex items-center justify-between text-xs"
+                    >
+                      <div>
+                        <span className="font-semibold text-stone-900 mr-2">{log.recipient_name || "Constituent"}</span>
+                        <span className="font-mono text-stone-600">{log.phone_number}</span>
+                        <span className="text-stone-300 mx-2">•</span>
+                        <span className="text-stone-500">{log.electoral_area || "Takoradi"}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`font-semibold capitalize px-2 py-0.5 rounded-md text-[11px] ${
+                            log.status === "delivered" || log.status === "sent"
+                              ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                              : "bg-rose-50 text-rose-800 border border-rose-200"
+                          }`}
+                        >
+                          {log.status}
+                        </span>
+                        <span className="text-stone-400 text-[11px]">
+                          {new Date(log.created_at).toLocaleTimeString()}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`font-semibold ${
-                          log.status === "sent" ? "text-emerald-700" : "text-rose-700"
-                        }`}
-                      >
-                        {log.status}
-                      </span>
-                      <span className="text-stone-400 text-[11px]">
-                        {new Date(log.created_at).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>

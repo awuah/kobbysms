@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { sendSingleSMS, sendBulkSMS, calculateSMSDetails, sanitizePhoneNumber } from "@/lib/sms";
+import { sendBulkSMS, sanitizePhoneNumber } from "@/lib/sms";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
+  let createdCampaignId: string | null = null;
   try {
     const body = await request.json();
     const {
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
       }
 
       targetRecipients = (data || []).map((c) => ({
-        phone: c.phone_number,
+        phone: sanitizePhoneNumber(c.phone_number),
         name: `${c.first_name || ""} ${c.last_name || ""}`.trim() || "Constituent",
         locality: c.electoral_area,
       }));
@@ -90,11 +92,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: campErr.message }, { status: 500 });
     }
 
-    // 3. Dispatch SMS messages
+    createdCampaignId = campaign.id;
+
+    // 3. Dispatch SMS messages via Arkesel v2 Bulk Gateway
+    const callbackUrl = process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/sms/callback`
+      : "https://sms.kobbydogood.org/api/sms/callback";
+
     const bulkResult = await sendBulkSMS(
       targetRecipients.map((r) => ({ phone: r.phone, name: r.name })),
       message.trim(),
-      sender_id || "KOBBYMP"
+      sender_id || "KOBBYMP",
+      callbackUrl
     );
 
     // 4. Batch insert into ks_sms_logs for auditing
@@ -104,7 +113,7 @@ export async function POST(request: Request) {
         campaign_id: campaign.id,
         recipient_name: target.name,
         phone_number: target.phone,
-        electoral_area: target.locality || "Other",
+        electoral_area: target.locality || "Takoradi",
         message: message.trim(),
         sender_id: sender_id || "KOBBYMP",
         status: res.success ? "sent" : "failed",
@@ -114,7 +123,7 @@ export async function POST(request: Request) {
     });
 
     // Chunk log inserts to prevent payload limits
-    const CHUNK_SIZE = 100;
+    const CHUNK_SIZE = 200;
     for (let i = 0; i < logsToInsert.length; i += CHUNK_SIZE) {
       const chunk = logsToInsert.slice(i, i + CHUNK_SIZE);
       await supabaseAdmin.from("ks_sms_logs").insert(chunk);
@@ -140,6 +149,22 @@ export async function POST(request: Request) {
     });
   } catch (err: any) {
     console.error("[SMS Broadcast Error]:", err);
+
+    // Safeguard: Mark campaign as failed so it never stays stuck in "sending"
+    if (createdCampaignId) {
+      try {
+        await supabaseAdmin
+          .from("ks_campaigns")
+          .update({
+            status: "failed",
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", createdCampaignId);
+      } catch (updateErr) {
+        console.error("Failed to mark campaign as failed:", updateErr);
+      }
+    }
+
     return NextResponse.json({ error: err.message || "Failed to broadcast SMS" }, { status: 500 });
   }
 }
