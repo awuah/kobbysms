@@ -44,25 +44,69 @@ export async function POST(request: Request) {
         .filter((item: any) => item.phone.length >= 9);
     } else {
       // Query database based on target_type ("all" or specific localities)
-      let query = supabaseAdmin
+      // Note: Supabase has a default server limit of 1,000 rows per query.
+      // We count total matching rows and fetch all pages concurrently so all constituents are reached.
+      let countQuery = supabaseAdmin
         .from("ks_constituents")
-        .select("first_name, last_name, phone_number, electoral_area")
+        .select("*", { count: "exact", head: true })
         .eq("is_active", true);
 
       if (target_type === "localities" && target_localities.length > 0) {
-        query = query.in("electoral_area", target_localities);
+        countQuery = countQuery.in("electoral_area", target_localities);
       }
 
-      const { data, error } = await query;
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      const { count: totalMatching, error: countErr } = await countQuery;
+      if (countErr) {
+        return NextResponse.json({ error: countErr.message }, { status: 500 });
       }
 
-      targetRecipients = (data || []).map((c) => ({
-        phone: sanitizePhoneNumber(c.phone_number),
-        name: `${c.first_name || ""} ${c.last_name || ""}`.trim() || "Constituent",
-        locality: c.electoral_area,
-      }));
+      const totalCount = totalMatching || 0;
+      const PAGE_SIZE = 1000;
+      const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+      const pageIndexes = Array.from({ length: totalPages }, (_, i) => i);
+      const CONCURRENCY = 6;
+      const allRows: any[] = [];
+
+      for (let i = 0; i < pageIndexes.length; i += CONCURRENCY) {
+        const batch = pageIndexes.slice(i, i + CONCURRENCY);
+        const batchPromises = batch.map((pageIdx) => {
+          const from = pageIdx * PAGE_SIZE;
+          let q = supabaseAdmin
+            .from("ks_constituents")
+            .select("first_name, last_name, phone_number, electoral_area")
+            .eq("is_active", true)
+            .range(from, from + PAGE_SIZE - 1);
+
+          if (target_type === "localities" && target_localities.length > 0) {
+            q = q.in("electoral_area", target_localities);
+          }
+          return q;
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        for (const res of batchResults) {
+          if (res.data) {
+            allRows.push(...res.data);
+          }
+        }
+      }
+
+      targetRecipients = allRows
+        .map((c) => ({
+          phone: sanitizePhoneNumber(c.phone_number),
+          name: `${c.first_name || ""} ${c.last_name || ""}`.trim() || "Constituent",
+          locality: c.electoral_area,
+        }))
+        .filter((item) => item.phone.length >= 9);
+
+      // De-duplicate recipients by phone number
+      const seenPhones = new Set<string>();
+      targetRecipients = targetRecipients.filter((r) => {
+        if (!r.phone || seenPhones.has(r.phone)) return false;
+        seenPhones.add(r.phone);
+        return true;
+      });
     }
 
     if (targetRecipients.length === 0) {
